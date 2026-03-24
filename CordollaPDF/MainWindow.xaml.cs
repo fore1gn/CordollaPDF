@@ -16,12 +16,12 @@ namespace CordollaPDF;
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private const double HorizontalPadding = 72;
-    private const double VerticalPadding = 44;
+    private const double VerticalPadding = 16;
     private const double PageGap = 30;
-    private const double SpreadGap = 42;
+    private const double SpreadGap = 40;
     private const double MinZoom = 0.35;
     private const double MaxZoom = 3.0;
-    private const double KeyboardScrollDelta = 133;
+    private const double KeyboardScrollDelta = 133; // d scroll speed
     private static readonly TimeSpan DoubleGThreshold = TimeSpan.FromMilliseconds(600);
 
     private readonly SemaphoreSlim _renderGate = new(1, 1);
@@ -41,13 +41,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isTwoPageMode = true;
     private bool _isFitToScreen = true;
     private bool _isSidebarCollapsed;
+    private bool _isFindPanelVisible;
     private double _manualZoom = 1.1;
     private double _activeZoom = 1.1;
     private string? _currentPath;
+    private string _searchQuery = string.Empty;
+    private string _searchStatusText = string.Empty;
+    private string _activeSearchQuery = string.Empty;
     private long _documentVersion;
     private bool _isDKeyScrolling;
     private bool _isUKeyScrolling;
     private DateTime _lastGKeyPressUtc = DateTime.MinValue;
+    private PageSlotViewModel? _selectionPage;
+    private Point _selectionStartPoint;
+    private PdfSearchMatch? _currentSearchMatch;
 
     public MainWindow()
     {
@@ -139,6 +146,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public Visibility SidebarVisibility => _isSidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
 
     public string TableOfContentsMenuText => _isSidebarCollapsed ? "Show Table Of Contents" : "Collapse Table Of Contents";
+
+    public bool IsFindPanelVisible
+    {
+        get => _isFindPanelVisible;
+        private set => SetField(ref _isFindPanelVisible, value);
+    }
+
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (!SetField(ref _searchQuery, value))
+            {
+                return;
+            }
+
+            _currentSearchMatch = null;
+            _activeSearchQuery = string.Empty;
+            SearchStatusText = string.Empty;
+            ClearSearchHighlights();
+        }
+    }
+
+    public string SearchStatusText
+    {
+        get => _searchStatusText;
+        private set => SetField(ref _searchStatusText, value);
+    }
 
     public string PageCountText => $"/ {Math.Max(1, _totalPages)}";
 
@@ -286,6 +322,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.F && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            ShowFindPanel();
+            e.Handled = true;
+            return;
+        }
+
         if (IsTextInputFocused())
         {
             return;
@@ -300,6 +343,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _dKeyScrollTimer.Start();
             }
 
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Left)
+        {
+            MoveByArrowKey(-1);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Right)
+        {
+            MoveByArrowKey(1);
             e.Handled = true;
             return;
         }
@@ -349,6 +406,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _ = OpenDocumentPickerAsync();
             e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.C && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            if (CopyCurrentSelectionToClipboard())
+            {
+                e.Handled = true;
+            }
         }
     }
 
@@ -418,6 +484,106 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             await LoadDocumentAsync(path);
         }
+    }
+
+    private void TextSelectionOverlay_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_document is null || sender is not System.Windows.Controls.Canvas canvas || canvas.Tag is not PageSlotViewModel page)
+        {
+            return;
+        }
+
+        ClearSelections();
+        _selectionPage = page;
+        _selectionStartPoint = e.GetPosition(canvas);
+        canvas.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void TextSelectionOverlay_OnMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_selectionPage is null || sender is not System.Windows.Controls.Canvas canvas || !ReferenceEquals(canvas.Tag, _selectionPage))
+        {
+            return;
+        }
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            canvas.ReleaseMouseCapture();
+            _selectionPage = null;
+            return;
+        }
+
+        ApplyTextSelection(_selectionPage, _selectionStartPoint, e.GetPosition(canvas));
+    }
+
+    private void TextSelectionOverlay_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_document is null || _selectionPage is null || sender is not System.Windows.Controls.Canvas canvas || !ReferenceEquals(canvas.Tag, _selectionPage))
+        {
+            return;
+        }
+
+        var selectionPage = _selectionPage;
+        var startPoint = _selectionStartPoint;
+        _selectionPage = null;
+
+        canvas.ReleaseMouseCapture();
+
+        var endPoint = e.GetPosition(canvas);
+        ApplyTextSelection(selectionPage, startPoint, endPoint);
+        e.Handled = true;
+    }
+
+    private void TextSelectionOverlay_OnContextMenuOpening(object sender, System.Windows.Controls.ContextMenuEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Canvas canvas || canvas.ContextMenu is null)
+        {
+            return;
+        }
+
+        var hasSelection = HasCurrentSelection();
+        foreach (var item in canvas.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>())
+        {
+            item.IsEnabled = hasSelection;
+        }
+    }
+
+    private void CopySelectionMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        CopyCurrentSelectionToClipboard();
+        e.Handled = true;
+    }
+
+    private void FindTextBox_OnKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ExecuteFind(forward: !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            HideFindPanel();
+            e.Handled = true;
+        }
+    }
+
+    private void FindPreviousButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        ExecuteFind(forward: false);
+    }
+
+    private void FindNextButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        ExecuteFind(forward: true);
+    }
+
+    private void CloseFindButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        HideFindPanel();
     }
 
     protected override void OnClosed(EventArgs e)
@@ -495,6 +661,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         OnPropertyChanged(nameof(PageCountText));
         OnPropertyChanged(nameof(ZoomText));
         OnPropertyChanged(nameof(TitleBarDocumentName));
+        ClearSelections();
+        ClearSearchHighlights();
+        SearchStatusText = string.Empty;
+        _activeSearchQuery = string.Empty;
+        _currentSearchMatch = null;
     }
 
     private void BuildSpreads(PdfiumDocument document)
@@ -602,7 +773,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             widthUnits += PageGap;
         }
 
-        var heightUnits = Math.Max(referenceSpread.LeftPage.SourceHeight, referenceSpread.RightPage?.SourceHeight ?? 0);
+        var heightUnits = Math.Max(referenceSpread.LeftPage.SourceHeight, referenceSpread.RightPage?.SourceHeight ?? 0) + SpreadGap;
         var fitScale = Math.Min(availableWidth / Math.Max(1, widthUnits), availableHeight / Math.Max(1, heightUnits));
 
         _activeZoom = _isFitToScreen ? fitScale : _manualZoom;
@@ -742,7 +913,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (page >= spread.FirstPageNumber && page <= spread.LastPageNumber)
             {
-                SmoothScrollBehavior.AnimateTo(ViewerScrollViewer, Math.Max(0, offset - 12), 180);
+                SmoothScrollBehavior.AnimateTo(ViewerScrollViewer, offset, 180);
+                QueueVisibleRenders();
+                return;
+            }
+
+            offset += spread.TotalHeight;
+        }
+    }
+
+    private void JumpToPageInstant(int pageNumber)
+    {
+        if (!HasDocument)
+        {
+            return;
+        }
+
+        var page = Math.Clamp(pageNumber, 1, Math.Max(1, _totalPages));
+        CurrentPage = page;
+
+        double offset = 0;
+        foreach (var spread in Spreads)
+        {
+            if (page >= spread.FirstPageNumber && page <= spread.LastPageNumber)
+            {
+                SmoothScrollBehavior.JumpTo(ViewerScrollViewer, offset);
                 QueueVisibleRenders();
                 return;
             }
@@ -872,6 +1067,269 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StatusText = _isFitToScreen ? "Fit-to-screen enabled" : "Fit-to-screen disabled";
         RecalculateLayout();
         QueueVisibleRenders();
+    }
+
+    private void ShowFindPanel()
+    {
+        IsFindPanelVisible = true;
+        Dispatcher.InvokeAsync(() =>
+        {
+            FindTextBox.Focus();
+            FindTextBox.SelectAll();
+        }, DispatcherPriority.Input);
+    }
+
+    private void HideFindPanel()
+    {
+        IsFindPanelVisible = false;
+        SearchStatusText = string.Empty;
+        ClearSearchHighlights();
+        _currentSearchMatch = null;
+        _activeSearchQuery = string.Empty;
+    }
+
+    private void ExecuteFind(bool forward)
+    {
+        if (_document is null || !HasDocument)
+        {
+            return;
+        }
+
+        var query = SearchQuery.Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            SearchStatusText = "Enter text to find";
+            return;
+        }
+
+        var match = FindMatch(query, forward);
+        if (match is null)
+        {
+            SearchStatusText = $"No matches for \"{query}\"";
+            StatusText = "Search found no matches";
+            return;
+        }
+
+        _activeSearchQuery = query;
+        _currentSearchMatch = match;
+        JumpToPageInstant(match.PageIndex + 1);
+        HighlightSearchMatch(match);
+        SearchStatusText = $"Page {match.PageIndex + 1}";
+        StatusText = $"Found match on page {match.PageIndex + 1}";
+    }
+
+    private PdfSearchMatch? FindMatch(string query, bool forward)
+    {
+        if (_document is null || _totalPages <= 0)
+        {
+            return null;
+        }
+
+        var sameQuery = string.Equals(_activeSearchQuery, query, StringComparison.CurrentCulture);
+        var startPageIndex = sameQuery && _currentSearchMatch is not null
+            ? _currentSearchMatch.PageIndex
+            : Math.Clamp(CurrentPage - 1, 0, Math.Max(0, _totalPages - 1));
+
+        var startTextIndex = sameQuery && _currentSearchMatch is not null
+            ? (forward ? _currentSearchMatch.TextIndex + Math.Max(1, _currentSearchMatch.Length) : _currentSearchMatch.TextIndex - 1)
+            : (forward ? 0 : int.MaxValue);
+
+        for (var offset = 0; offset < _totalPages; offset++)
+        {
+            var pageIndex = forward
+                ? (startPageIndex + offset) % _totalPages
+                : (startPageIndex - offset + _totalPages) % _totalPages;
+
+            var pageText = _document.GetPageText(pageIndex);
+            if (string.IsNullOrEmpty(pageText))
+            {
+                continue;
+            }
+
+            int matchIndex;
+            if (forward)
+            {
+                var pageStartIndex = offset == 0 ? Math.Max(0, startTextIndex) : 0;
+                if (pageStartIndex >= pageText.Length)
+                {
+                    continue;
+                }
+
+                matchIndex = pageText.IndexOf(query, pageStartIndex, StringComparison.CurrentCultureIgnoreCase);
+            }
+            else
+            {
+                var pageStartIndex = offset == 0 ? Math.Min(startTextIndex, pageText.Length - 1) : pageText.Length - 1;
+                if (pageStartIndex < 0)
+                {
+                    continue;
+                }
+
+                matchIndex = pageText.LastIndexOf(query, pageStartIndex, StringComparison.CurrentCultureIgnoreCase);
+            }
+
+            if (matchIndex >= 0)
+            {
+                return new PdfSearchMatch(pageIndex, matchIndex, query.Length);
+            }
+        }
+
+        return null;
+    }
+
+    private void HighlightSearchMatch(PdfSearchMatch match)
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        ClearSearchHighlights();
+        var page = GetPageSlot(match.PageIndex + 1);
+        if (page is null)
+        {
+            return;
+        }
+
+        var selection = _document.SelectTextByTextRange(
+            match.PageIndex,
+            match.TextIndex,
+            match.Length,
+            new Size(page.DisplayWidth, page.DisplayHeight));
+
+        if (selection is null)
+        {
+            return;
+        }
+
+        page.SetSearchHighlight(selection.Rects);
+    }
+
+    private void ApplyTextSelection(PageSlotViewModel page, Point startPoint, Point endPoint)
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        var deltaX = Math.Abs(endPoint.X - startPoint.X);
+        var deltaY = Math.Abs(endPoint.Y - startPoint.Y);
+        if (deltaX < 2 && deltaY < 2)
+        {
+            page.ClearSelection();
+            return;
+        }
+
+        var selection = _document.SelectText(
+            page.PageNumber - 1,
+            startPoint,
+            endPoint,
+            new Size(page.DisplayWidth, page.DisplayHeight));
+
+        if (selection is null || selection.Rects.Count == 0 || string.IsNullOrWhiteSpace(selection.Text))
+        {
+            page.ClearSelection();
+            return;
+        }
+
+        page.SetSelection(selection.Rects, selection.Text);
+    }
+
+    private void MoveByArrowKey(int direction)
+    {
+        if (!HasDocument || direction == 0)
+        {
+            return;
+        }
+
+        var targetPage = _isTwoPageMode
+            ? Math.Clamp(GetCurrentSpreadFirstPage() + (direction * 2), 1, Math.Max(1, _totalPages))
+            : Math.Clamp(CurrentPage + direction, 1, Math.Max(1, _totalPages));
+
+        JumpToPageInstant(targetPage);
+    }
+
+    private int GetCurrentSpreadFirstPage()
+    {
+        var currentSpread = Spreads.FirstOrDefault(spread => spread.FirstPageNumber <= CurrentPage && CurrentPage <= spread.LastPageNumber);
+        return currentSpread?.FirstPageNumber ?? CurrentPage;
+    }
+
+    private PageSlotViewModel? GetPageSlot(int pageNumber)
+    {
+        foreach (var spread in Spreads)
+        {
+            if (spread.LeftPage.PageNumber == pageNumber)
+            {
+                return spread.LeftPage;
+            }
+
+            if (spread.RightPage?.PageNumber == pageNumber)
+            {
+                return spread.RightPage;
+            }
+        }
+
+        return null;
+    }
+
+    private void ClearSelections()
+    {
+        foreach (var spread in Spreads)
+        {
+            spread.LeftPage.ClearSelection();
+            spread.RightPage?.ClearSelection();
+        }
+    }
+
+    private void ClearSearchHighlights()
+    {
+        foreach (var spread in Spreads)
+        {
+            spread.LeftPage.ClearSearchHighlight();
+            spread.RightPage?.ClearSearchHighlight();
+        }
+    }
+
+    private bool CopyCurrentSelectionToClipboard()
+    {
+        var selectedText = Spreads
+            .SelectMany(spread => new[] { spread.LeftPage, spread.RightPage })
+            .Where(page => page is not null && !string.IsNullOrWhiteSpace(page.SelectedText))
+            .Select(page => page!.SelectedText)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(selectedText))
+        {
+            return false;
+        }
+
+        Clipboard.SetText(selectedText);
+        StatusText = "Selected text copied";
+        return true;
+    }
+
+    private bool HasCurrentSelection()
+    {
+        return Spreads.Any(spread =>
+            !string.IsNullOrWhiteSpace(spread.LeftPage.SelectedText) ||
+            (spread.RightPage is not null && !string.IsNullOrWhiteSpace(spread.RightPage.SelectedText)));
+    }
+
+    private sealed class PdfSearchMatch
+    {
+        public PdfSearchMatch(int pageIndex, int textIndex, int length)
+        {
+            PageIndex = pageIndex;
+            TextIndex = textIndex;
+            Length = length;
+        }
+
+        public int PageIndex { get; }
+
+        public int TextIndex { get; }
+
+        public int Length { get; }
     }
 
     private void CommitPageNumberNavigation()

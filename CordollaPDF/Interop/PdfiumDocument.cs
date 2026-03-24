@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PDFiumCore;
+using CordollaPDF.Models;
 
 namespace CordollaPDF.Interop;
 
@@ -16,6 +17,7 @@ public sealed class PdfiumDocument : IDisposable
     private readonly object _syncRoot = new();
     private readonly byte[] _documentBytes;
     private readonly GCHandle _documentHandle;
+    private readonly Dictionary<int, string> _pageTextCache = [];
     private bool _disposed;
 
     public PdfiumDocument(string path)
@@ -94,6 +96,248 @@ public sealed class PdfiumDocument : IDisposable
                 finally
                 {
                     fpdfview.FPDFBitmapDestroy(bitmap);
+                }
+            }
+            finally
+            {
+                fpdfview.FPDF_ClosePage(page);
+            }
+        }
+    }
+
+    public PdfTextSelectionResult? SelectText(int pageIndex, Point startDisplayPoint, Point endDisplayPoint, Size displaySize)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (pageIndex < 0 || pageIndex >= PageCount || displaySize.Width <= 0 || displaySize.Height <= 0)
+        {
+            return null;
+        }
+
+        lock (_syncRoot)
+        {
+            var page = fpdfview.FPDF_LoadPage(Handle, pageIndex);
+            if (page == default)
+            {
+                return null;
+            }
+
+            try
+            {
+                var textPage = fpdf_text.FPDFTextLoadPage(page);
+                if (textPage == default)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    var startIndex = FindNearestCharacterIndex(textPage, pageIndex, startDisplayPoint, displaySize);
+                    var endIndex = FindNearestCharacterIndex(textPage, pageIndex, endDisplayPoint, displaySize);
+                    if (startIndex < 0 || endIndex < 0)
+                    {
+                        return null;
+                    }
+
+                    if (startIndex > endIndex)
+                    {
+                        (startIndex, endIndex) = (endIndex, startIndex);
+                    }
+
+                    var count = (endIndex - startIndex) + 1;
+                    if (count <= 0)
+                    {
+                        return null;
+                    }
+
+                    var buffer = new ushort[count + 1];
+                    var written = fpdf_text.FPDFTextGetText(textPage, startIndex, count, ref buffer[0]);
+                    if (written <= 1)
+                    {
+                        return null;
+                    }
+
+                    var text = new string(buffer.Take(written - 1).Select(value => (char)value).ToArray()).Trim();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return null;
+                    }
+
+                    var rectCount = fpdf_text.FPDFTextCountRects(textPage, startIndex, count);
+                    var rects = new List<TextSelectionRect>();
+
+                    for (var i = 0; i < rectCount; i++)
+                    {
+                        double left = 0;
+                        double top = 0;
+                        double right = 0;
+                        double bottom = 0;
+
+                        if (fpdf_text.FPDFTextGetRect(textPage, i, ref left, ref top, ref right, ref bottom) == 0)
+                        {
+                            continue;
+                        }
+
+                        rects.Add(ConvertPageRectToDisplayRect(pageIndex, left, top, right, bottom, displaySize));
+                    }
+
+                    if (rects.Count == 0)
+                    {
+                        return null;
+                    }
+
+                    return new PdfTextSelectionResult(text, rects);
+                }
+                finally
+                {
+                    fpdf_text.FPDFTextClosePage(textPage);
+                }
+            }
+            finally
+            {
+                fpdfview.FPDF_ClosePage(page);
+            }
+        }
+    }
+
+    public string GetPageText(int pageIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (pageIndex < 0 || pageIndex >= PageCount)
+        {
+            return string.Empty;
+        }
+
+        lock (_syncRoot)
+        {
+            if (_pageTextCache.TryGetValue(pageIndex, out var cached))
+            {
+                return cached;
+            }
+
+            var page = fpdfview.FPDF_LoadPage(Handle, pageIndex);
+            if (page == default)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var textPage = fpdf_text.FPDFTextLoadPage(page);
+                if (textPage == default)
+                {
+                    return string.Empty;
+                }
+
+                try
+                {
+                    var charCount = fpdf_text.FPDFTextCountChars(textPage);
+                    if (charCount <= 0)
+                    {
+                        _pageTextCache[pageIndex] = string.Empty;
+                        return string.Empty;
+                    }
+
+                    var buffer = new ushort[charCount + 1];
+                    var written = fpdf_text.FPDFTextGetText(textPage, 0, charCount, ref buffer[0]);
+                    if (written <= 1)
+                    {
+                        _pageTextCache[pageIndex] = string.Empty;
+                        return string.Empty;
+                    }
+
+                    var text = new string(buffer.Take(written - 1).Select(value => (char)value).ToArray());
+                    _pageTextCache[pageIndex] = text;
+                    return text;
+                }
+                finally
+                {
+                    fpdf_text.FPDFTextClosePage(textPage);
+                }
+            }
+            finally
+            {
+                fpdfview.FPDF_ClosePage(page);
+            }
+        }
+    }
+
+    public PdfTextSelectionResult? SelectTextByTextRange(int pageIndex, int textStartIndex, int textLength, Size displaySize)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (pageIndex < 0 || pageIndex >= PageCount || textStartIndex < 0 || textLength <= 0 || displaySize.Width <= 0 || displaySize.Height <= 0)
+        {
+            return null;
+        }
+
+        lock (_syncRoot)
+        {
+            var page = fpdfview.FPDF_LoadPage(Handle, pageIndex);
+            if (page == default)
+            {
+                return null;
+            }
+
+            try
+            {
+                var textPage = fpdf_text.FPDFTextLoadPage(page);
+                if (textPage == default)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    var charStartIndex = fpdf_searchex.FPDFTextGetCharIndexFromTextIndex(textPage, textStartIndex);
+                    var charEndIndex = fpdf_searchex.FPDFTextGetCharIndexFromTextIndex(textPage, textStartIndex + textLength - 1);
+                    if (charStartIndex < 0 || charEndIndex < 0 || charEndIndex < charStartIndex)
+                    {
+                        return null;
+                    }
+
+                    var charCount = (charEndIndex - charStartIndex) + 1;
+                    var buffer = new ushort[textLength + 1];
+                    var written = fpdf_text.FPDFTextGetText(textPage, charStartIndex, charCount, ref buffer[0]);
+                    if (written <= 1)
+                    {
+                        return null;
+                    }
+
+                    var text = new string(buffer.Take(written - 1).Select(value => (char)value).ToArray()).Trim();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return null;
+                    }
+
+                    var rectCount = fpdf_text.FPDFTextCountRects(textPage, charStartIndex, charCount);
+                    var rects = new List<TextSelectionRect>();
+                    for (var i = 0; i < rectCount; i++)
+                    {
+                        double left = 0;
+                        double top = 0;
+                        double right = 0;
+                        double bottom = 0;
+
+                        if (fpdf_text.FPDFTextGetRect(textPage, i, ref left, ref top, ref right, ref bottom) == 0)
+                        {
+                            continue;
+                        }
+
+                        rects.Add(ConvertPageRectToDisplayRect(pageIndex, left, top, right, bottom, displaySize));
+                    }
+
+                    if (rects.Count == 0)
+                    {
+                        return null;
+                    }
+
+                    return new PdfTextSelectionResult(text, rects);
+                }
+                finally
+                {
+                    fpdf_text.FPDFTextClosePage(textPage);
                 }
             }
             finally
@@ -260,6 +504,42 @@ public sealed class PdfiumDocument : IDisposable
         return source;
     }
 
+    private int FindNearestCharacterIndex(FpdfTextpageT textPage, int pageIndex, Point displayPoint, Size displaySize)
+    {
+        var pageSize = PageSizes[pageIndex];
+        var pdfPoint = DisplayToPdfPoint(displayPoint, pageSize, displaySize);
+
+        foreach (var tolerance in new[] { 2d, 5d, 8d, 12d })
+        {
+            var index = fpdf_text.FPDFTextGetCharIndexAtPos(textPage, pdfPoint.X, pdfPoint.Y, tolerance, tolerance);
+            if (index >= 0)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static Point DisplayToPdfPoint(Point displayPoint, Size pageSize, Size displaySize)
+    {
+        var clampedX = Math.Clamp(displayPoint.X, 0, displaySize.Width);
+        var clampedY = Math.Clamp(displayPoint.Y, 0, displaySize.Height);
+        var pdfX = (clampedX / displaySize.Width) * pageSize.Width;
+        var pdfY = pageSize.Height - ((clampedY / displaySize.Height) * pageSize.Height);
+        return new Point(pdfX, pdfY);
+    }
+
+    private TextSelectionRect ConvertPageRectToDisplayRect(int pageIndex, double left, double top, double right, double bottom, Size displaySize)
+    {
+        var pageSize = PageSizes[pageIndex];
+        var displayLeft = (left / pageSize.Width) * displaySize.Width;
+        var displayTop = ((pageSize.Height - top) / pageSize.Height) * displaySize.Height;
+        var displayWidth = ((right - left) / pageSize.Width) * displaySize.Width;
+        var displayHeight = ((top - bottom) / pageSize.Height) * displaySize.Height;
+        return new TextSelectionRect(displayLeft, displayTop, displayWidth, displayHeight);
+    }
+
     private static void EnsureLibrary()
     {
         lock (LibraryLock)
@@ -299,4 +579,17 @@ public sealed class PdfOutlineNode
     public int PageNumber { get; }
 
     public Collection<PdfOutlineNode> Children { get; } = [];
+}
+
+public sealed class PdfTextSelectionResult
+{
+    public PdfTextSelectionResult(string text, IReadOnlyList<TextSelectionRect> rects)
+    {
+        Text = text;
+        Rects = rects;
+    }
+
+    public string Text { get; }
+
+    public IReadOnlyList<TextSelectionRect> Rects { get; }
 }

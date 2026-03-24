@@ -51,11 +51,16 @@
         <SolidColorBrush x:Key="MenuHoverBrush" Color="#454545" />
         <SolidColorBrush x:Key="MenuTopHoverBrush" Color="#3A3A3A" />
         <SolidColorBrush x:Key="MenuTopSelectedBrush" Color="#404040" />
+        <SolidColorBrush x:Key="ContextMenuBrush" Color="#2C2C2C" />
+        <SolidColorBrush x:Key="ContextMenuBorderBrush" Color="#505050" />
+        <SolidColorBrush x:Key="ContextMenuHoverBrush" Color="#3D3D3D" />
         <SolidColorBrush x:Key="OutlineSelectionBrush" Color="#4A4A4A" />
         <SolidColorBrush x:Key="OutlineSelectionBorderBrush" Color="#6A6A6A" />
         <SolidColorBrush x:Key="ScrollTrackBrush" Color="#3A3A3A" />
         <SolidColorBrush x:Key="ScrollThumbBrush" Color="#6B6B6B" />
         <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#848484" />
+        <SolidColorBrush x:Key="FindPanelBrush" Color="#2F2F2F" />
+        <SolidColorBrush x:Key="FindPanelBorderBrush" Color="#565656" />
 
         <Style x:Key="MenuSeparatorStyle" TargetType="Separator">
             <Setter Property="Template">
@@ -64,6 +69,59 @@
                         <Border Height="1"
                         Margin="3,3"
                         Background="#4A4A4A"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SelectionContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="Background" Value="{StaticResource ContextMenuBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ContextMenuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource StrongTextBrush}" />
+            <Setter Property="Padding" Value="6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SelectionContextMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{StaticResource StrongTextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="RootBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              ContentSource="Header"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="{StaticResource ContextMenuHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#7F7F7F" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -248,6 +306,57 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="FindTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource PageIndexTextBoxStyle}">
+            <Setter Property="Background" Value="#383838" />
+            <Setter Property="BorderBrush" Value="#5C5C5C" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="6,0"
+                                          VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FindCloseButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource StrongTextBrush}" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Foreground" Value="#FFFFFF" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="CaptionButtonStyle" TargetType="Button">
@@ -720,6 +829,72 @@
 
                     <Grid Grid.Column="1">
                         <Grid>
+                            <Border Panel.ZIndex="4"
+                                    Width="334"
+                                    Margin="0,14,18,0"
+                                    Padding="10,10,10,8"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top"
+                                    Background="{StaticResource FindPanelBrush}"
+                                    BorderBrush="{StaticResource FindPanelBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Visibility="{Binding IsFindPanelVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBox x:Name="FindTextBox"
+                                             Grid.Row="0"
+                                             Grid.Column="0"
+                                             MinWidth="148"
+                                             Margin="0,0,6,0"
+                                             Style="{StaticResource FindTextBoxStyle}"
+                                             KeyDown="FindTextBox_OnKeyDown"
+                                             Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <Button Grid.Row="0"
+                                            Grid.Column="1"
+                                            Width="52"
+                                            Margin="0,0,6,0"
+                                            Style="{StaticResource ChromeButtonStyle}"
+                                            Click="FindPreviousButton_OnClick"
+                                            Content="Prev" />
+
+                                    <Button Grid.Row="0"
+                                            Grid.Column="2"
+                                            Width="52"
+                                            Margin="0,0,6,0"
+                                            Style="{StaticResource ChromeButtonStyle}"
+                                            Click="FindNextButton_OnClick"
+                                            Content="Next" />
+
+                                    <Button Grid.Row="0"
+                                            Grid.Column="3"
+                                            Margin="0,-6,0,0"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Top"
+                                            Style="{StaticResource FindCloseButtonStyle}"
+                                            Click="CloseFindButton_OnClick"
+                                            Content="   x" />
+
+                                    <TextBlock Grid.Row="1"
+                                               Grid.ColumnSpan="4"
+                                               Margin="2,8,0,0"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               FontSize="12"
+                                               Text="{Binding SearchStatusText}" />
+                                </Grid>
+                            </Border>
+
                             <StackPanel Panel.ZIndex="2"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
@@ -784,7 +959,7 @@
 
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type models:SpreadViewModel}">
-                                            <Border Margin="0,28,0,12" HorizontalAlignment="Center">
+                                            <Border Margin="0,15,0,25" HorizontalAlignment="Center">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="Auto" />
@@ -801,8 +976,8 @@
                                                         SnapsToDevicePixels="True">
                                                         <Grid>
                                                             <Image Source="{Binding LeftPage.Image}"
-                                                               Stretch="Fill"
-                                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                                                   Stretch="Fill"
+                                                                   RenderOptions.BitmapScalingMode="HighQuality" />
 
                                                             <Border Background="White">
                                                                 <Border.Style>
@@ -816,11 +991,70 @@
                                                                     </Style>
                                                                 </Border.Style>
                                                                 <TextBlock HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"
-                                                                       Foreground="#9A9A9A"
-                                                                       FontSize="18"
-                                                                       Text="{Binding LeftPage.PageNumber, StringFormat=Page {0}}" />
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="#9A9A9A"
+                                                                           FontSize="18"
+                                                                           Text="{Binding LeftPage.PageNumber, StringFormat=Page {0}}" />
                                                             </Border>
+
+                                                            <Canvas Background="Transparent"
+                                                                    Tag="{Binding LeftPage}"
+                                                                    Cursor="IBeam"
+                                                                    ContextMenuOpening="TextSelectionOverlay_OnContextMenuOpening"
+                                                                    MouseLeftButtonDown="TextSelectionOverlay_OnMouseLeftButtonDown"
+                                                                    MouseMove="TextSelectionOverlay_OnMouseMove"
+                                                                    MouseLeftButtonUp="TextSelectionOverlay_OnMouseLeftButtonUp">
+                                                                <Canvas.ContextMenu>
+                                                                    <ContextMenu Style="{StaticResource SelectionContextMenuStyle}">
+                                                                        <MenuItem Header="Copy"
+                                                                                  Style="{StaticResource SelectionContextMenuItemStyle}"
+                                                                                  Click="CopySelectionMenuItem_OnClick" />
+                                                                    </ContextMenu>
+                                                                </Canvas.ContextMenu>
+                                                                <ItemsControl ItemsSource="{Binding LeftPage.SelectionRects}"
+                                                                              IsHitTestVisible="False">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <Canvas />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemContainerStyle>
+                                                                        <Style TargetType="ContentPresenter">
+                                                                            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                                            <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                                        </Style>
+                                                                    </ItemsControl.ItemContainerStyle>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate DataType="{x:Type models:TextSelectionRect}">
+                                                                            <Rectangle Width="{Binding Width}"
+                                                                                       Height="{Binding Height}"
+                                                                                       Fill="#6690C8FF" />
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+
+                                                                <ItemsControl ItemsSource="{Binding LeftPage.SearchRects}"
+                                                                              IsHitTestVisible="False">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <Canvas />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemContainerStyle>
+                                                                        <Style TargetType="ContentPresenter">
+                                                                            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                                            <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                                        </Style>
+                                                                    </ItemsControl.ItemContainerStyle>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate DataType="{x:Type models:TextSelectionRect}">
+                                                                            <Rectangle Width="{Binding Width}"
+                                                                                       Height="{Binding Height}"
+                                                                                       Fill="#66F4D35E" />
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </Canvas>
                                                         </Grid>
                                                     </Border>
 
@@ -834,8 +1068,8 @@
                                                         SnapsToDevicePixels="True">
                                                         <Grid>
                                                             <Image Source="{Binding RightPage.Image}"
-                                                               Stretch="Fill"
-                                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                                                   Stretch="Fill"
+                                                                   RenderOptions.BitmapScalingMode="HighQuality" />
 
                                                             <Border Background="White">
                                                                 <Border.Style>
@@ -849,11 +1083,71 @@
                                                                     </Style>
                                                                 </Border.Style>
                                                                 <TextBlock HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"
-                                                                       Foreground="#9A9A9A"
-                                                                       FontSize="18"
-                                                                       Text="{Binding RightPage.PageNumber, StringFormat=Page {0}}" />
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="#9A9A9A"
+                                                                           FontSize="18"
+                                                                           Text="{Binding RightPage.PageNumber, StringFormat=Page {0}}" />
                                                             </Border>
+
+                                                            <Canvas Background="Transparent"
+                                                                    Tag="{Binding RightPage}"
+                                                                    Cursor="IBeam"
+                                                                    Visibility="{Binding HasRightPage, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                    ContextMenuOpening="TextSelectionOverlay_OnContextMenuOpening"
+                                                                    MouseLeftButtonDown="TextSelectionOverlay_OnMouseLeftButtonDown"
+                                                                    MouseMove="TextSelectionOverlay_OnMouseMove"
+                                                                    MouseLeftButtonUp="TextSelectionOverlay_OnMouseLeftButtonUp">
+                                                                <Canvas.ContextMenu>
+                                                                    <ContextMenu Style="{StaticResource SelectionContextMenuStyle}">
+                                                                        <MenuItem Header="Copy"
+                                                                                  Style="{StaticResource SelectionContextMenuItemStyle}"
+                                                                                  Click="CopySelectionMenuItem_OnClick" />
+                                                                    </ContextMenu>
+                                                                </Canvas.ContextMenu>
+                                                                <ItemsControl ItemsSource="{Binding RightPage.SelectionRects}"
+                                                                              IsHitTestVisible="False">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <Canvas />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemContainerStyle>
+                                                                        <Style TargetType="ContentPresenter">
+                                                                            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                                            <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                                        </Style>
+                                                                    </ItemsControl.ItemContainerStyle>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate DataType="{x:Type models:TextSelectionRect}">
+                                                                            <Rectangle Width="{Binding Width}"
+                                                                                       Height="{Binding Height}"
+                                                                                       Fill="#6690C8FF" />
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+
+                                                                <ItemsControl ItemsSource="{Binding RightPage.SearchRects}"
+                                                                              IsHitTestVisible="False">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <Canvas />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemContainerStyle>
+                                                                        <Style TargetType="ContentPresenter">
+                                                                            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                                            <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                                        </Style>
+                                                                    </ItemsControl.ItemContainerStyle>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate DataType="{x:Type models:TextSelectionRect}">
+                                                                            <Rectangle Width="{Binding Width}"
+                                                                                       Height="{Binding Height}"
+                                                                                       Fill="#66F4D35E" />
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </Canvas>
                                                         </Grid>
                                                     </Border>
                                                 </Grid>

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Collections.ObjectModel;
 using System.Windows.Media;
 
 namespace CordollaPDF.Models;
@@ -12,6 +13,7 @@ public sealed class PageSlotViewModel : INotifyPropertyChanged
     private bool _isRendering;
     private int _renderToken;
     private int _lastRenderedPixelWidth;
+    private string _selectedText = string.Empty;
 
     public PageSlotViewModel(int pageNumber, double sourceWidth, double sourceHeight)
     {
@@ -21,6 +23,10 @@ public sealed class PageSlotViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    public ObservableCollection<TextSelectionRect> SelectionRects { get; } = [];
+
+    public ObservableCollection<TextSelectionRect> SearchRects { get; } = [];
 
     public int PageNumber { get; }
 
@@ -64,10 +70,61 @@ public sealed class PageSlotViewModel : INotifyPropertyChanged
         set => SetField(ref _lastRenderedPixelWidth, value);
     }
 
+    public bool HasSelection => SelectionRects.Count > 0;
+
+    public string SelectedText
+    {
+        get => _selectedText;
+        private set => SetField(ref _selectedText, value);
+    }
+
     public void ClearImage()
     {
         Image = null;
         IsRendering = false;
+    }
+
+    public void SetSelection(IReadOnlyList<TextSelectionRect> rects, string text)
+    {
+        SelectionRects.Clear();
+        foreach (var rect in rects)
+        {
+            SelectionRects.Add(rect);
+        }
+
+        SelectedText = text;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasSelection)));
+    }
+
+    public void ClearSelection()
+    {
+        if (SelectionRects.Count == 0 && string.IsNullOrEmpty(SelectedText))
+        {
+            return;
+        }
+
+        SelectionRects.Clear();
+        SelectedText = string.Empty;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasSelection)));
+    }
+
+    public void SetSearchHighlight(IReadOnlyList<TextSelectionRect> rects)
+    {
+        SearchRects.Clear();
+        foreach (var rect in rects)
+        {
+            SearchRects.Add(rect);
+        }
+    }
+
+    public void ClearSearchHighlight()
+    {
+        if (SearchRects.Count == 0)
+        {
+            return;
+        }
+
+        SearchRects.Clear();
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

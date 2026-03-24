@@ -84,6 +84,23 @@ public static class SmoothScrollBehavior
         scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
+    public static void JumpTo(ScrollViewer scrollViewer, double targetOffset)
+    {
+        if (scrollViewer is null)
+        {
+            return;
+        }
+
+        var clampedTarget = Math.Clamp(
+            targetOffset,
+            0,
+            Math.Max(0, scrollViewer.ScrollableHeight));
+
+        scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, null);
+        SetTargetVerticalOffset(scrollViewer, clampedTarget);
+        SetAnimatedVerticalOffset(scrollViewer, clampedTarget);
+    }
+
     private static void OnIsEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not ScrollViewer scrollViewer)
