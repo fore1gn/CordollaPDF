@@ -34,7 +34,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private PdfiumDocument? _document;
     private string _documentName = "Drop a PDF or choose File > Open";
     private string _sidebarDocumentLabel = "No document loaded";
-    private string _statusText = "Ready";
+    private string _statusText = "";
     private string _windowCaption = "CordollaPDF";
     private int _currentPage = 1;
     private int _totalPages;
@@ -257,6 +257,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void AboutMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         Process.Start(new ProcessStartInfo("https://google.com") { UseShellExecute = true });
+    }
+
+    private void ManualMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo("https://example.com/manual") { UseShellExecute = true });
     }
 
     private void TogglePageModeMenuItem_OnClick(object sender, RoutedEventArgs e)

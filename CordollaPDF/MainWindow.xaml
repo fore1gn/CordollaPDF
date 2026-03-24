@@ -76,7 +76,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Separator">
                         <Border Height="1"
-                        Margin="3,3"
+                        Margin="0"
                         Background="#4A4A4A"/>
                     </ControlTemplate>
                 </Setter.Value>
@@ -139,7 +139,7 @@
         <Style TargetType="Menu">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{StaticResource StrongTextBrush}" />
-            <Setter Property="FontSize" Value="17" />
+            <Setter Property="FontSize" Value="15" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True" />
         </Style>
@@ -178,7 +178,8 @@
                                     </Border>
                                 </Popup>
 
-                                <Grid Margin="0">
+                                <Grid x:Name="HeaderLayoutGrid"
+                                      Margin="0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
@@ -205,19 +206,22 @@
                                 <Setter TargetName="RootBorder" Property="Background" Value="Transparent" />
                                 <Setter Property="Padding" Value="22,10" />
                                 <Setter Property="Margin" Value="0,0,14,0" />
-                                <Setter Property="FontSize" Value="17" />
+                                <Setter Property="FontSize" Value="15" />
+                                <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="0" />
                             </Trigger>
                             <Trigger Property="Role" Value="SubmenuHeader">
                                 <Setter TargetName="RootBorder" Property="Background" Value="Transparent" />
                                 <Setter TargetName="Arrow" Property="Visibility" Value="Visible" />
                                 <Setter TargetName="PART_Popup" Property="Placement" Value="Right" />
                                 <Setter Property="Padding" Value="14,9" />
-                                <Setter Property="FontSize" Value="17" />
+                                <Setter Property="FontSize" Value="15" />
+                                <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="11,3,0,3" />
                             </Trigger>
                             <Trigger Property="Role" Value="SubmenuItem">
                                 <Setter TargetName="PART_Popup" Property="Placement" Value="Right" />
                                 <Setter Property="Padding" Value="14,9" />
-                                <Setter Property="FontSize" Value="17" />
+                                <Setter Property="FontSize" Value="15" />
+                                <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="11,3,0,3" />
                             </Trigger>
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="RootBorder" Property="Background" Value="{StaticResource MenuHoverBrush}" />
@@ -639,7 +643,7 @@
                     <TextBlock Grid.Column="0"
                            Margin="18,0,18,0"
                            VerticalAlignment="Center"
-                           FontSize="17"
+                           FontSize="15"
                            Foreground="{DynamicResource BrandGradientBrush}"
                            Text="CordollaPDF" />
 
@@ -657,10 +661,14 @@
                         </MenuItem>
                         <MenuItem Header="_Edit">
                             <MenuItem Header="Fit To Screen" Click="FitButton_OnClick" />
+                            <Separator Style="{StaticResource MenuSeparatorStyle}"/>
                             <MenuItem Header="Toggle Two-Page Mode" Click="TogglePageModeMenuItem_OnClick" />
+                            <Separator Style="{StaticResource MenuSeparatorStyle}"/>
                             <MenuItem Header="{Binding TableOfContentsMenuText}" Click="ToggleTableOfContentsMenuItem_OnClick" />
                         </MenuItem>
                         <MenuItem Header="_Help">
+                            <MenuItem Header="_Manual" Click="ManualMenuItem_OnClick" />
+                            <Separator Style="{StaticResource MenuSeparatorStyle}"/>
                             <MenuItem Header="Send feedback" Click="AboutMenuItem_OnClick" />
                         </MenuItem>
                     </Menu>
@@ -684,23 +692,10 @@
                     <Grid Grid.Column="3"
                       Margin="0,0,12,0"
                       HorizontalAlignment="Right"
-                      shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock Grid.Column="0"
-                               Margin="0,0,16,0"
-                               VerticalAlignment="Center"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               Text="{Binding StatusText}" />
-
-                    </Grid>
+                      shell:WindowChrome.IsHitTestVisibleInChrome="True" />
 
                     <Grid Grid.Column="4"
+                      Margin="0,0,6,0"
                       HorizontalAlignment="Right"
                       shell:WindowChrome.IsHitTestVisibleInChrome="True">
                         <Grid.ColumnDefinitions>
