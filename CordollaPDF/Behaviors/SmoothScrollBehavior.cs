@@ -7,7 +7,7 @@ namespace CordollaPDF.Behaviors;
 
 public static class SmoothScrollBehavior
 {
-    private const double DefaultDurationMs = 170;
+    private const double DefaultDurationMs = 220;
 
     public static readonly DependencyProperty IsEnabledProperty =
         DependencyProperty.RegisterAttached(
@@ -49,9 +49,10 @@ public static class SmoothScrollBehavior
             return;
         }
 
-        var baseOffset = Math.Abs(GetTargetVerticalOffset(scrollViewer) - scrollViewer.VerticalOffset) > 0.5
+        var currentOffset = GetCurrentOffset(scrollViewer);
+        var baseOffset = Math.Abs(GetTargetVerticalOffset(scrollViewer) - currentOffset) > 0.5
             ? GetTargetVerticalOffset(scrollViewer)
-            : scrollViewer.VerticalOffset;
+            : currentOffset;
 
         AnimateTo(
             scrollViewer,
@@ -71,14 +72,16 @@ public static class SmoothScrollBehavior
             0,
             Math.Max(0, scrollViewer.ScrollableHeight));
 
+        var currentOffset = GetCurrentOffset(scrollViewer);
         SetTargetVerticalOffset(scrollViewer, clampedTarget);
+        SetAnimatedVerticalOffset(scrollViewer, currentOffset);
 
         var animation = new DoubleAnimation
         {
-            From = scrollViewer.VerticalOffset,
+            From = currentOffset,
             To = clampedTarget,
             Duration = TimeSpan.FromMilliseconds(durationMs),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
 
         scrollViewer.BeginAnimation(AnimatedVerticalOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
@@ -110,6 +113,8 @@ public static class SmoothScrollBehavior
 
         if ((bool)e.NewValue)
         {
+            SetAnimatedVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
+            SetTargetVerticalOffset(scrollViewer, scrollViewer.VerticalOffset);
             scrollViewer.PreviewMouseWheel += OnPreviewMouseWheel;
         }
         else
@@ -125,9 +130,22 @@ public static class SmoothScrollBehavior
             return;
         }
 
-        var delta = -e.Delta * 0.9;
-        ScrollBy(scrollViewer, delta);
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            return;
+        }
+
+        var delta = -e.Delta * 0.72;
+        ScrollBy(scrollViewer, delta, 210);
         e.Handled = true;
+    }
+
+    private static double GetCurrentOffset(ScrollViewer scrollViewer)
+    {
+        var animatedOffset = GetAnimatedVerticalOffset(scrollViewer);
+        return Math.Abs(animatedOffset - scrollViewer.VerticalOffset) > 0.5
+            ? animatedOffset
+            : scrollViewer.VerticalOffset;
     }
 
     private static void OnAnimatedVerticalOffsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

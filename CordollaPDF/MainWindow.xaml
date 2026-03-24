@@ -19,18 +19,27 @@
         SizeChanged="Window_OnSizeChanged"
         PreviewKeyDown="Window_OnPreviewKeyDown"
         PreviewKeyUp="Window_OnPreviewKeyUp"
+        PreviewMouseWheel="Window_OnPreviewMouseWheel"
         Deactivated="Window_OnDeactivated" AllowsTransparency="True">
-    <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="42"
-                            CornerRadius="10"
-                            GlassFrameThickness="0"
-                            NonClientFrameEdges="None"
-                            ResizeBorderThickness="6"
-                            UseAeroCaptionButtons="True" />
-    </shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome.WindowChrome>
+            <shell:WindowChrome CaptionHeight="42"
+                                CornerRadius="10"
+                                GlassFrameThickness="0"
+                                NonClientFrameEdges="None"
+                                ResizeBorderThickness="6"
+                                UseAeroCaptionButtons="True" />
+        </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+        <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}" TargetType="{x:Type Control}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate />
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <SolidColorBrush x:Key="TitleBrush" Color="#343434" />
         <SolidColorBrush x:Key="ChromeBrush" Color="#2A2A2A" />
@@ -924,7 +933,7 @@
                                    Foreground="{StaticResource MutedTextBrush}"
                                    FontSize="13"
                                    Opacity="0.6"
-                                   Text="Press U / D to scroll up and down&#x0d;&#x0a;Press H to collapse the table of contents"
+                                   Text="Press the Left/Right to jump in pairs of pages&#x0d;&#x0a;Press Tab to collapse the table of contents"
                                    TextAlignment="Center" />
                             </StackPanel>
 

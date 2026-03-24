@@ -19,8 +19,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const double VerticalPadding = 16;
     private const double PageGap = 30;
     private const double SpreadGap = 40;
-    private const double MinZoom = 0.35;
-    private const double MaxZoom = 3.0;
+    private const double MinZoom = 1;
+    private const double MaxZoom = 2.68;
+    private const double SmallKeyboardScrollDelta = 44;
     private const double KeyboardScrollDelta = 133; // d scroll speed
     private static readonly TimeSpan DoubleGThreshold = TimeSpan.FromMilliseconds(600);
 
@@ -275,7 +276,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void FitButton_OnClick(object sender, RoutedEventArgs e)
     {
-        ToggleFitToScreen();
+        ApplyFitToScreen();
     }
 
     private void ZoomInButton_OnClick(object sender, RoutedEventArgs e)
@@ -320,11 +321,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DragMove();
     }
 
+    // keybindings
     private void Window_OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.F && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             ShowFindPanel();
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
+            (e.Key == Key.OemPlus || e.Key == Key.Add))
+        {
+            AdjustZoom(1.12);
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
+            (e.Key == Key.OemMinus || e.Key == Key.Subtract))
+        {
+            AdjustZoom(1 / 1.12);
             e.Handled = true;
             return;
         }
@@ -374,6 +392,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (e.Key == Key.Down || e.Key == Key.J)
+        {
+            ScrollDownSmallStep();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Up || e.Key == Key.K)
+        {
+            ScrollUpSmallStep();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.H)
+        {
+            MoveByArrowKey(-1);
+            e.Handled = true;
+            return;
+        }    
+
+        if (e.Key == Key.L)
+        {
+            MoveByArrowKey(1);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.G && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
         {
             ScrollToBottom();
@@ -388,7 +434,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (e.Key == Key.H)
+        if (e.Key == Key.Tab)
         {
             ToggleTableOfContents();
             e.Handled = true;
@@ -397,7 +443,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (e.Key == Key.F)
         {
-            ToggleFitToScreen();
+            ApplyFitToScreen();
             e.Handled = true;
             return;
         }
@@ -432,6 +478,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             StopUKeyScrolling();
             e.Handled = true;
         }
+    }
+
+    private void Window_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            return;
+        }
+
+        AdjustZoom(e.Delta > 0 ? 1.12 : 1 / 1.12);
+        e.Handled = true;
     }
 
     private void Window_OnDeactivated(object? sender, EventArgs e)
@@ -1061,10 +1118,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }, DispatcherPriority.Background);
     }
 
-    private void ToggleFitToScreen()
+    private void ApplyFitToScreen()
     {
-        _isFitToScreen = !_isFitToScreen;
-        StatusText = _isFitToScreen ? "Fit-to-screen enabled" : "Fit-to-screen disabled";
+        _isFitToScreen = true;
+        StatusText = "Fit-to-screen applied";
         RecalculateLayout();
         QueueVisibleRenders();
     }
@@ -1340,6 +1397,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         ScrollToPage(CurrentPage);
+    }
+
+    private void ScrollDownSmallStep()
+    {
+        if (!HasDocument)
+        {
+            return;
+        }
+
+        SmoothScrollBehavior.ScrollBy(ViewerScrollViewer, SmallKeyboardScrollDelta, 125);
+    }
+
+    private void ScrollUpSmallStep()
+    {
+        if (!HasDocument)
+        {
+            return;
+        }
+
+        SmoothScrollBehavior.ScrollBy(ViewerScrollViewer, -SmallKeyboardScrollDelta, 125);
     }
 
     private void ScrollDownWithDKey()
