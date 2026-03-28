@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PDFiumCore;
 using CordollaPDF.Models;
+using CordollaPDF.ProFeatures.Extraction;
 
 namespace CordollaPDF.Interop;
 
@@ -250,6 +252,58 @@ public sealed class PdfiumDocument : IDisposable
                     var text = new string(buffer.Take(written - 1).Select(value => (char)value).ToArray());
                     _pageTextCache[pageIndex] = text;
                     return text;
+                }
+                finally
+                {
+                    fpdf_text.FPDFTextClosePage(textPage);
+                }
+            }
+            finally
+            {
+                fpdfview.FPDF_ClosePage(page);
+            }
+        }
+    }
+
+    public PdfExtractedPage ExtractTextPage(int pageIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (pageIndex < 0 || pageIndex >= PageCount)
+        {
+            return new PdfExtractedPage(pageIndex, default, []);
+        }
+
+        var pageSize = PageSizes[pageIndex];
+        var pageBounds = new PdfExtractionBounds(0, 0, pageSize.Width, pageSize.Height);
+
+        lock (_syncRoot)
+        {
+            var page = fpdfview.FPDF_LoadPage(Handle, pageIndex);
+            if (page == default)
+            {
+                return new PdfExtractedPage(pageIndex, pageBounds, []);
+            }
+
+            try
+            {
+                var textPage = fpdf_text.FPDFTextLoadPage(page);
+                if (textPage == default)
+                {
+                    return new PdfExtractedPage(pageIndex, pageBounds, []);
+                }
+
+                try
+                {
+                    var chars = ExtractCharacters(textPage);
+                    if (chars.Count == 0)
+                    {
+                        return new PdfExtractedPage(pageIndex, pageBounds, []);
+                    }
+
+                    var lines = BuildLines(chars);
+                    var blocks = BuildBlocks(lines);
+                    return new PdfExtractedPage(pageIndex, pageBounds, blocks);
                 }
                 finally
                 {
@@ -539,6 +593,283 @@ public sealed class PdfiumDocument : IDisposable
         var displayHeight = ((top - bottom) / pageSize.Height) * displaySize.Height;
         return new TextSelectionRect(displayLeft, displayTop, displayWidth, displayHeight);
     }
+
+    private static List<ExtractedChar> ExtractCharacters(FpdfTextpageT textPage)
+    {
+        var charCount = fpdf_text.FPDFTextCountChars(textPage);
+        var chars = new List<ExtractedChar>(Math.Max(0, charCount));
+
+        for (var index = 0; index < charCount; index++)
+        {
+            var unicode = fpdf_text.FPDFTextGetUnicode(textPage, index);
+            if (unicode == 0)
+            {
+                continue;
+            }
+
+            var text = char.ConvertFromUtf32((int)unicode);
+            if (string.IsNullOrEmpty(text) || text is "\r" or "\n")
+            {
+                continue;
+            }
+
+            double left = 0;
+            double right = 0;
+            double bottom = 0;
+            double top = 0;
+
+            if (fpdf_text.FPDFTextGetCharBox(textPage, index, ref left, ref right, ref bottom, ref top) == 0)
+            {
+                continue;
+            }
+
+            if (right <= left || top <= bottom)
+            {
+                continue;
+            }
+
+            var fontFlags = 0;
+            var fontName = NormalizeFontName(GetFontName(textPage, index, ref fontFlags));
+            var fontSize = Convert.ToDouble(fpdf_text.FPDFTextGetFontSize(textPage, index));
+            var fontWeight = fpdf_text.FPDFTextGetFontWeight(textPage, index);
+            var fillColorHex = GetFillColorHex(textPage, index);
+            var rotationDegrees = Convert.ToDouble(fpdf_text.FPDFTextGetCharAngle(textPage, index));
+            var isItalic = (fontFlags & 64) != 0 ||
+                           fontName.Contains("italic", StringComparison.OrdinalIgnoreCase) ||
+                           fontName.Contains("oblique", StringComparison.OrdinalIgnoreCase);
+
+            chars.Add(new ExtractedChar(
+                index,
+                text,
+                new PdfExtractionBounds(left, bottom, right, top),
+                new PdfTextStyle(
+                    fontName,
+                    fontSize,
+                    fontWeight,
+                    isItalic,
+                    fillColorHex,
+                    rotationDegrees)));
+        }
+
+        return chars;
+    }
+
+    private static List<PdfTextLine> BuildLines(List<ExtractedChar> chars)
+    {
+        var lines = new List<PdfTextLine>();
+        var currentChars = new List<ExtractedChar>();
+        ExtractedChar? previous = null;
+
+        foreach (var current in chars)
+        {
+            if (previous is not null && StartsNewLine(previous, current))
+            {
+                AddLine(lines, currentChars);
+                currentChars = [];
+            }
+
+            currentChars.Add(current);
+            previous = current;
+        }
+
+        AddLine(lines, currentChars);
+        return lines;
+    }
+
+    private static List<PdfTextBlock> BuildBlocks(List<PdfTextLine> lines)
+    {
+        var blocks = new List<PdfTextBlock>();
+        var currentLines = new List<PdfTextLine>();
+        PdfTextLine? previous = null;
+
+        foreach (var line in lines)
+        {
+            if (previous is not null && StartsNewBlock(previous, line))
+            {
+                AddBlock(blocks, currentLines);
+                currentLines = [];
+            }
+
+            currentLines.Add(line);
+            previous = line;
+        }
+
+        AddBlock(blocks, currentLines);
+        return blocks;
+    }
+
+    private static void AddLine(List<PdfTextLine> lines, List<ExtractedChar> lineChars)
+    {
+        if (lineChars.Count == 0)
+        {
+            return;
+        }
+
+        var runs = BuildRuns(lineChars);
+        if (runs.Count == 0)
+        {
+            return;
+        }
+
+        lines.Add(new PdfTextLine(
+            lines.Count,
+            PdfExtractionBounds.Union(runs.Select(run => run.Bounds)),
+            runs));
+    }
+
+    private static void AddBlock(List<PdfTextBlock> blocks, List<PdfTextLine> blockLines)
+    {
+        if (blockLines.Count == 0)
+        {
+            return;
+        }
+
+        blocks.Add(new PdfTextBlock(
+            blocks.Count,
+            PdfExtractionBounds.Union(blockLines.Select(line => line.Bounds)),
+            blockLines.ToList()));
+    }
+
+    private static List<PdfTextRun> BuildRuns(List<ExtractedChar> lineChars)
+    {
+        var runs = new List<PdfTextRun>();
+        var currentChars = new List<ExtractedChar>();
+        ExtractedChar? previous = null;
+
+        foreach (var current in lineChars)
+        {
+            if (previous is not null && !HasSameStyle(previous.Style, current.Style))
+            {
+                AddRun(runs, currentChars);
+                currentChars = [];
+            }
+
+            currentChars.Add(current);
+            previous = current;
+        }
+
+        AddRun(runs, currentChars);
+        return runs;
+    }
+
+    private static void AddRun(List<PdfTextRun> runs, List<ExtractedChar> runChars)
+    {
+        if (runChars.Count == 0)
+        {
+            return;
+        }
+
+        runs.Add(new PdfTextRun(
+            runs.Count,
+            runChars[0].CharIndex,
+            runChars.Count,
+            string.Concat(runChars.Select(item => item.Text)),
+            PdfExtractionBounds.Union(runChars.Select(item => item.Bounds)),
+            runChars[0].Style));
+    }
+
+    private static bool StartsNewLine(ExtractedChar previous, ExtractedChar current)
+    {
+        var verticalShift = Math.Abs(current.Bounds.MidY - previous.Bounds.MidY);
+        var tolerance = Math.Max(3d, Math.Max(previous.Style.FontSizePoints, current.Style.FontSizePoints) * 0.8d);
+        return verticalShift > tolerance;
+    }
+
+    private static bool StartsNewBlock(PdfTextLine previous, PdfTextLine current)
+    {
+        var previousFontSize = GetRepresentativeFontSize(previous);
+        var currentFontSize = GetRepresentativeFontSize(current);
+        var gap = previous.Bounds.Bottom - current.Bounds.Top;
+        var indentDelta = Math.Abs(previous.Bounds.Left - current.Bounds.Left);
+        var gapThreshold = Math.Max(6d, Math.Max(previousFontSize, currentFontSize) * 0.85d);
+        var indentThreshold = Math.Max(18d, Math.Max(previousFontSize, currentFontSize) * 1.2d);
+
+        return gap > gapThreshold * 1.35d || indentDelta > indentThreshold;
+    }
+
+    private static double GetRepresentativeFontSize(PdfTextLine line)
+    {
+        return line.Runs.Count == 0 ? 12d : line.Runs.Max(run => run.Style.FontSizePoints);
+    }
+
+    private static bool HasSameStyle(PdfTextStyle left, PdfTextStyle right)
+    {
+        return string.Equals(left.FontName, right.FontName, StringComparison.Ordinal) &&
+               Math.Abs(left.FontSizePoints - right.FontSizePoints) <= 0.25d &&
+               Math.Abs(left.RotationDegrees - right.RotationDegrees) <= 0.5d &&
+               left.FontWeight == right.FontWeight &&
+               left.IsItalic == right.IsItalic &&
+               string.Equals(left.FillColorHex, right.FillColorHex, StringComparison.Ordinal);
+    }
+
+    private static string GetFontName(FpdfTextpageT textPage, int index, ref int flags)
+    {
+        var length = fpdf_text.FPDFTextGetFontInfo(textPage, index, IntPtr.Zero, 0, ref flags);
+        if (length == 0)
+        {
+            return string.Empty;
+        }
+
+        var buffer = Marshal.AllocHGlobal((int)length);
+        try
+        {
+            var written = fpdf_text.FPDFTextGetFontInfo(textPage, index, buffer, length, ref flags);
+            if (written == 0)
+            {
+                return string.Empty;
+            }
+
+            var bytes = new byte[Math.Max(0, (int)written - 1)];
+            if (bytes.Length > 0)
+            {
+                Marshal.Copy(buffer, bytes, 0, bytes.Length);
+            }
+
+            return Encoding.UTF8.GetString(bytes);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    private static string NormalizeFontName(string fontName)
+    {
+        if (string.IsNullOrWhiteSpace(fontName))
+        {
+            return "Unknown";
+        }
+
+        if (fontName.Length > 7 &&
+            fontName[6] == '+' &&
+            fontName.Take(6).All(static ch => ch is >= 'A' and <= 'Z'))
+        {
+            return fontName[7..];
+        }
+
+        return fontName;
+    }
+
+    private static string GetFillColorHex(FpdfTextpageT textPage, int index)
+    {
+        uint r = 0;
+        uint g = 0;
+        uint b = 0;
+        uint a = 255;
+
+        if (fpdf_text.FPDFTextGetFillColor(textPage, index, ref r, ref g, ref b, ref a) == 0)
+        {
+            return "#000000";
+        }
+
+        return $"#{r:X2}{g:X2}{b:X2}";
+    }
+
+    private sealed record ExtractedChar(
+        int CharIndex,
+        string Text,
+        PdfExtractionBounds Bounds,
+        PdfTextStyle Style);
 
     private static void EnsureLibrary()
     {

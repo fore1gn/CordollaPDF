@@ -4,7 +4,7 @@ PDF viewer with a fresh design and useful features, which for some reason is a r
 
 ![Alt text](/CordollaPDF/Assets/doublePage.png)
 
-***Features:***<br>Page jump, text highlighting, search by text, double page rendering, interacteable table of contents, zoom, fit to screen, different scrolling speeds, compact mode, Vim controls.
+***Features:***<br>Dark mode, page jump, text highlighting, search by text, double page rendering, interacteable table of contents, zoom, fit to screen, different scrolling speeds, compact mode, Vim controls.
 
 
 
