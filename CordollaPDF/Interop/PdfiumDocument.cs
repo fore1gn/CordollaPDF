@@ -602,41 +602,62 @@ public sealed class PdfiumDocument : IDisposable
         for (var index = 0; index < charCount; index++)
         {
             var unicode = fpdf_text.FPDFTextGetUnicode(textPage, index);
-            if (unicode == 0)
+            var text = TryConvertCodePoint(unicode);
+            if (text is null || text is "\r" or "\n")
             {
                 continue;
             }
 
-            var text = char.ConvertFromUtf32((int)unicode);
-            if (string.IsNullOrEmpty(text) || text is "\r" or "\n")
+            // Tight glyph box (used as a fallback for positioning).
+            double tightLeft = 0;
+            double tightRight = 0;
+            double tightBottom = 0;
+            double tightTop = 0;
+            var hasTight = fpdf_text.FPDFTextGetCharBox(textPage, index, ref tightLeft, ref tightRight, ref tightBottom, ref tightTop) != 0;
+
+            // Loose char box reflects text-matrix scaling, so it gives the visually rendered size
+            // and a consistent top/bottom per baseline regardless of glyph shape.
+            double left, right, bottom, top;
+            var looseRect = new FS_RECTF_();
+            if (fpdf_text.FPDFTextGetLooseCharBox(textPage, index, looseRect) != 0 &&
+                looseRect.Right > looseRect.Left && looseRect.Top > looseRect.Bottom)
             {
-                continue;
+                left = looseRect.Left;
+                right = looseRect.Right;
+                bottom = looseRect.Bottom;
+                top = looseRect.Top;
             }
-
-            double left = 0;
-            double right = 0;
-            double bottom = 0;
-            double top = 0;
-
-            if (fpdf_text.FPDFTextGetCharBox(textPage, index, ref left, ref right, ref bottom, ref top) == 0)
+            else if (hasTight && tightRight > tightLeft && tightTop > tightBottom)
             {
-                continue;
+                left = tightLeft;
+                right = tightRight;
+                bottom = tightBottom;
+                top = tightTop;
             }
-
-            if (right <= left || top <= bottom)
+            else
             {
                 continue;
             }
 
             var fontFlags = 0;
             var fontName = NormalizeFontName(GetFontName(textPage, index, ref fontFlags));
-            var fontSize = Convert.ToDouble(fpdf_text.FPDFTextGetFontSize(textPage, index));
+            var reportedFontSize = Convert.ToDouble(fpdf_text.FPDFTextGetFontSize(textPage, index));
             var fontWeight = fpdf_text.FPDFTextGetFontWeight(textPage, index);
             var fillColorHex = GetFillColorHex(textPage, index);
             var rotationDegrees = Convert.ToDouble(fpdf_text.FPDFTextGetCharAngle(textPage, index));
             var isItalic = (fontFlags & 64) != 0 ||
                            fontName.Contains("italic", StringComparison.OrdinalIgnoreCase) ||
                            fontName.Contains("oblique", StringComparison.OrdinalIgnoreCase);
+
+            // FPDFText_GetFontSize returns the text-state font size directly, which is accurate for
+            // most PDFs. It's only wrong when the PDF uses a text matrix to scale glyphs (LaTeX etc.),
+            // in which case it's implausibly small. The loose char box height is in user-space points
+            // but is roughly 1.15× the em size for typical fonts, so we use it only as a fallback and
+            // normalize it down when we do.
+            var boxHeight = top - bottom;
+            var fontSize = reportedFontSize >= 3d
+                ? reportedFontSize
+                : boxHeight / 1.15d;
 
             chars.Add(new ExtractedChar(
                 index,
@@ -651,7 +672,59 @@ public sealed class PdfiumDocument : IDisposable
                     rotationDegrees)));
         }
 
+        // PDFium returns characters in content-stream order, which is often not reading order.
+        // Re-sort into reading order: top-to-bottom, then left-to-right within the same line.
+        // We bucket Y by half the median font size so jitter doesn't split a line across buckets.
+        if (chars.Count > 1)
+        {
+            var medianSize = MedianFontSize(chars);
+            var bucket = Math.Max(2d, medianSize * 0.6d);
+
+            chars.Sort((a, b) =>
+            {
+                var bucketA = Math.Round(a.Bounds.Top / bucket);
+                var bucketB = Math.Round(b.Bounds.Top / bucket);
+                if (bucketA != bucketB)
+                {
+                    return bucketB.CompareTo(bucketA); // higher Y (top of page) first
+                }
+
+                var leftCompare = a.Bounds.Left.CompareTo(b.Bounds.Left);
+                if (leftCompare != 0)
+                {
+                    return leftCompare;
+                }
+
+                return a.CharIndex.CompareTo(b.CharIndex);
+            });
+        }
+
         return chars;
+    }
+
+    private static double MedianFontSize(List<ExtractedChar> chars)
+    {
+        if (chars.Count == 0)
+        {
+            return 12d;
+        }
+
+        var sizes = new List<double>(chars.Count);
+        foreach (var ch in chars)
+        {
+            if (ch.Style.FontSizePoints > 0)
+            {
+                sizes.Add(ch.Style.FontSizePoints);
+            }
+        }
+
+        if (sizes.Count == 0)
+        {
+            return 12d;
+        }
+
+        sizes.Sort();
+        return sizes[sizes.Count / 2];
     }
 
     private static List<PdfTextLine> BuildLines(List<ExtractedChar> chars)
@@ -770,8 +843,10 @@ public sealed class PdfiumDocument : IDisposable
 
     private static bool StartsNewLine(ExtractedChar previous, ExtractedChar current)
     {
-        var verticalShift = Math.Abs(current.Bounds.MidY - previous.Bounds.MidY);
-        var tolerance = Math.Max(3d, Math.Max(previous.Style.FontSizePoints, current.Style.FontSizePoints) * 0.8d);
+        // With loose char boxes the top (ascender) is consistent for every character on a baseline,
+        // so we compare tops directly and use a tight tolerance.
+        var verticalShift = Math.Abs(current.Bounds.Top - previous.Bounds.Top);
+        var tolerance = Math.Max(1.5d, Math.Max(previous.Style.FontSizePoints, current.Style.FontSizePoints) * 0.35d);
         return verticalShift > tolerance;
     }
 
@@ -863,6 +938,48 @@ public sealed class PdfiumDocument : IDisposable
         }
 
         return $"#{r:X2}{g:X2}{b:X2}";
+    }
+
+    private static string? TryConvertCodePoint(uint unicode)
+    {
+        // Drop anything PDFium could not map or that XML 1.0 can't serialize.
+        if (unicode == 0 || unicode > 0x10FFFF)
+        {
+            return null;
+        }
+
+        // Lone surrogates are not valid Unicode scalar values and would throw in ConvertFromUtf32.
+        if (unicode >= 0xD800 && unicode <= 0xDFFF)
+        {
+            return null;
+        }
+
+        // Non-characters that are illegal in XML 1.0.
+        if (unicode == 0xFFFE || unicode == 0xFFFF)
+        {
+            return null;
+        }
+
+        // Control characters that are illegal in XML 1.0 (only \t, \n, \r are allowed below 0x20).
+        if (unicode < 0x20 && unicode != 0x09 && unicode != 0x0A && unicode != 0x0D)
+        {
+            return null;
+        }
+
+        // C1 control block (0x7F-0x9F) — not illegal in XML but tends to be garbage font glyphs from PDFs.
+        if (unicode >= 0x7F && unicode <= 0x9F)
+        {
+            return null;
+        }
+
+        try
+        {
+            return char.ConvertFromUtf32((int)unicode);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     private sealed record ExtractedChar(

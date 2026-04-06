@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(dotnet add:*)",
+      "Bash(dotnet build:*)",
+      "Bash(find 'C:/Users/User/Documents/vibe projects/CordollaPDF/CordollaPDF/obj' -name *.dll)"
+    ]
+  }
+}

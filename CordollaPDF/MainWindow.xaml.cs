@@ -1,6 +1,7 @@
 using CordollaPDF.Behaviors;
 using CordollaPDF.Interop;
 using CordollaPDF.Models;
+using CordollaPDF.ProFeatures.Extraction;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -222,6 +223,72 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void CloseMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         CloseDocument();
+    }
+
+    private async void ExportToDocxMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        await ExportCurrentDocumentToDocxAsync();
+    }
+
+    private async Task ExportCurrentDocumentToDocxAsync()
+    {
+        var document = _document;
+        if (document is null || !HasDocument)
+        {
+            MessageBox.Show(
+                this,
+                "Open a PDF before exporting to DOCX.",
+                "Export to DOCX",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var suggestedName = Path.GetFileNameWithoutExtension(document.Name);
+        if (string.IsNullOrWhiteSpace(suggestedName))
+        {
+            suggestedName = "Document";
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export PDF to DOCX",
+            Filter = "Word Document (*.docx)|*.docx",
+            DefaultExt = ".docx",
+            FileName = suggestedName + ".docx",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var targetPath = dialog.FileName;
+        var previousStatus = StatusText;
+        StatusText = $"Exporting to {Path.GetFileName(targetPath)}...";
+        Mouse.OverrideCursor = Cursors.Wait;
+
+        try
+        {
+            await Task.Run(() => DocxExporter.Export(document, targetPath));
+            StatusText = $"Exported to {Path.GetFileName(targetPath)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = previousStatus;
+            MessageBox.Show(
+                this,
+                $"Failed to export the document to DOCX.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "Export to DOCX",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
     }
 
     private void JumpToTopMenuItem_OnClick(object sender, RoutedEventArgs e)

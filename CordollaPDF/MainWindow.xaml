@@ -652,6 +652,7 @@
                       Background="Transparent">
                         <MenuItem Header="_File">
                             <MenuItem Header="_Open" Click="OpenMenuItem_OnClick" />
+                            <MenuItem Header="Export To _DOCX..." Click="ExportToDocxMenuItem_OnClick" />
                             <Separator Style="{StaticResource MenuSeparatorStyle}"/>
                             <MenuItem Header="Jump To _Top" Click="JumpToTopMenuItem_OnClick" />
                             <MenuItem Header="Jump To _Bottom" Click="JumpToBottomMenuItem_OnClick" />
