@@ -154,10 +154,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">
                         <Border x:Name="RootBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="0"
+                                Background="Transparent"
                                 SnapsToDevicePixels="True">
                             <Grid MinWidth="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=MinWidth}">
                                 <Popup x:Name="PART_Popup"
@@ -178,67 +175,78 @@
                                     </Border>
                                 </Popup>
 
-                                <Grid x:Name="HeaderLayoutGrid"
-                                      Margin="0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                                <Border x:Name="HeaderChrome"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        Padding="{TemplateBinding Padding}"
+                                        CornerRadius="0"
+                                        SnapsToDevicePixels="True">
+                                    <Grid x:Name="HeaderLayoutGrid"
+                                          Margin="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
 
-                                    <ContentPresenter x:Name="HeaderHost"
-                                                      Margin="0"
-                                                      VerticalAlignment="Center"
-                                                      ContentSource="Header"
-                                                      RecognizesAccessKey="True" />
+                                        <ContentPresenter x:Name="HeaderHost"
+                                                          Margin="0"
+                                                          VerticalAlignment="Center"
+                                                          ContentSource="Header"
+                                                          RecognizesAccessKey="True" />
 
-                                    <Path x:Name="Arrow"
-                                          Grid.Column="1"
-                                          Margin="14,0,0,0"
-                                          VerticalAlignment="Center"
-                                          Data="M 0 0 L 6 0 L 3 4 Z"
-                                          Fill="{StaticResource MutedTextBrush}"
-                                          Visibility="Collapsed" />
-                                </Grid>
+                                        <Path x:Name="Arrow"
+                                              Grid.Column="1"
+                                              Margin="14,0,0,0"
+                                              VerticalAlignment="Center"
+                                              Data="M 0 0 L 6 0 L 3 4 Z"
+                                              Fill="{StaticResource MutedTextBrush}"
+                                              Visibility="Collapsed" />
+                                    </Grid>
+                                </Border>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="Role" Value="TopLevelHeader">
-                                <Setter TargetName="RootBorder" Property="Background" Value="Transparent" />
-                                <Setter Property="Padding" Value="22,10" />
-                                <Setter Property="Margin" Value="0,0,14,0" />
+                                <Setter TargetName="HeaderChrome" Property="Background" Value="Transparent" />
+                                <Setter TargetName="HeaderChrome" Property="CornerRadius" Value="8" />
+                                <Setter Property="Padding" Value="8,5" />
+                                <Setter Property="Margin" Value="0,0,6,0" />
                                 <Setter Property="FontSize" Value="15" />
                                 <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="0" />
                             </Trigger>
                             <Trigger Property="Role" Value="SubmenuHeader">
-                                <Setter TargetName="RootBorder" Property="Background" Value="Transparent" />
+                                <Setter TargetName="HeaderChrome" Property="Background" Value="Transparent" />
+                                <Setter TargetName="HeaderChrome" Property="CornerRadius" Value="3" />
                                 <Setter TargetName="Arrow" Property="Visibility" Value="Visible" />
                                 <Setter TargetName="PART_Popup" Property="Placement" Value="Right" />
-                                <Setter Property="Padding" Value="14,9" />
+                                <Setter Property="Padding" Value="0" />
                                 <Setter Property="FontSize" Value="15" />
-                                <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="11,3,0,3" />
+                                <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="10,2,8,2" />
                             </Trigger>
                             <Trigger Property="Role" Value="SubmenuItem">
+                                <Setter TargetName="HeaderChrome" Property="CornerRadius" Value="3" />
                                 <Setter TargetName="PART_Popup" Property="Placement" Value="Right" />
-                                <Setter Property="Padding" Value="14,9" />
+                                <Setter Property="Padding" Value="0" />
                                 <Setter Property="FontSize" Value="15" />
-                                <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="11,3,0,3" />
+                                <Setter TargetName="HeaderLayoutGrid" Property="Margin" Value="10,2,8,2" />
                             </Trigger>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="{StaticResource MenuHoverBrush}" />
+                                <Setter TargetName="HeaderChrome" Property="Background" Value="{StaticResource MenuHoverBrush}" />
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
                                     <Condition Property="Role" Value="TopLevelHeader" />
                                     <Condition Property="IsHighlighted" Value="True" />
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="RootBorder" Property="Background" Value="{StaticResource MenuTopHoverBrush}" />
+                                <Setter TargetName="HeaderChrome" Property="Background" Value="{StaticResource MenuTopHoverBrush}" />
                             </MultiTrigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
                                     <Condition Property="Role" Value="TopLevelHeader" />
                                     <Condition Property="IsSubmenuOpen" Value="True" />
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="RootBorder" Property="Background" Value="{StaticResource MenuTopSelectedBrush}" />
+                                <Setter TargetName="HeaderChrome" Property="Background" Value="{StaticResource MenuTopSelectedBrush}" />
                             </MultiTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Foreground" Value="#7F7F7F" />
