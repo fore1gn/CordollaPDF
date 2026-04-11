@@ -1,5 +1,5 @@
 /** 
-*Copyright (C) 2026 New Forma Interactive. All rights reserved.
+*Copyright (C) 2026 New Sierra Interactive. All rights reserved.
 *
 *This software is proprietary. Source code is available for reference only. Redistribution, modification for distribution, or commercial use without written permission is strictly prohibited.
 *
