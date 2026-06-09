@@ -256,12 +256,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void AboutMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo("https://google.com") { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo("https://forms.gle/PwcZPfizAvetdQqd9") { UseShellExecute = true });
     }
 
     private void ManualMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo("https://example.com/manual") { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo("https://cordolla-pdf.com/manual") { UseShellExecute = true });
     }
 
     private void TogglePageModeMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -555,9 +555,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var startPoint = e.GetPosition(canvas);
+        var linkTarget = _document.GetLinkTargetAt(page.PageNumber - 1, startPoint, new Size(canvas.ActualWidth, canvas.ActualHeight));
+        if (linkTarget is not null)
+        {
+            ClearSelections();
+            ActivatePdfLinkTarget(linkTarget);
+            e.Handled = true;
+            return;
+        }
+
         ClearSelections();
         _selectionPage = page;
-        _selectionStartPoint = e.GetPosition(canvas);
+        _selectionStartPoint = startPoint;
         canvas.CaptureMouse();
         e.Handled = true;
     }
@@ -615,6 +625,50 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         CopyCurrentSelectionToClipboard();
         e.Handled = true;
+    }
+
+    private void ActivatePdfLinkTarget(PdfLinkTarget target)
+    {
+        if (target.Kind == PdfLinkTargetKind.Page)
+        {
+            ScrollToPage(target.PageNumber);
+            StatusText = $"Jumped to page {target.PageNumber}";
+            return;
+        }
+
+        if (target.Kind == PdfLinkTargetKind.Uri && TryOpenLinkUri(target.Uri))
+        {
+            StatusText = "Opened link";
+            return;
+        }
+
+        StatusText = "Unsupported link";
+    }
+
+    private static bool TryOpenLinkUri(string? uriText)
+    {
+        if (!Uri.TryCreate(uriText, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (uri.Scheme is not ("http" or "https" or "mailto"))
+        {
+            return false;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri)
+            {
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void FindTextBox_OnKeyDown(object sender, KeyEventArgs e)

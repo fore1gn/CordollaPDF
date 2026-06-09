@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -97,6 +98,37 @@ public sealed class PdfiumDocument : IDisposable
                 {
                     fpdfview.FPDFBitmapDestroy(bitmap);
                 }
+            }
+            finally
+            {
+                fpdfview.FPDF_ClosePage(page);
+            }
+        }
+    }
+
+    public PdfLinkTarget? GetLinkTargetAt(int pageIndex, Point displayPoint, Size displaySize)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (pageIndex < 0 || pageIndex >= PageCount || displaySize.Width <= 0 || displaySize.Height <= 0)
+        {
+            return null;
+        }
+
+        lock (_syncRoot)
+        {
+            var page = fpdfview.FPDF_LoadPage(Handle, pageIndex);
+            if (page == default)
+            {
+                return null;
+            }
+
+            try
+            {
+                var pageSize = PageSizes[pageIndex];
+                var pdfPoint = DisplayToPdfPoint(displayPoint, pageSize, displaySize);
+                var link = fpdf_doc.FPDFLinkGetLinkAtPoint(page, pdfPoint.X, pdfPoint.Y);
+                return link == default ? null : ResolveLinkTarget(link);
             }
             finally
             {
@@ -483,6 +515,78 @@ public sealed class PdfiumDocument : IDisposable
         return 0;
     }
 
+    private PdfLinkTarget? ResolveLinkTarget(FpdfLinkT link)
+    {
+        var dest = fpdf_doc.FPDFLinkGetDest(Handle, link);
+        var pageTarget = ResolveDestinationTarget(dest);
+        if (pageTarget is not null)
+        {
+            return pageTarget;
+        }
+
+        var action = fpdf_doc.FPDFLinkGetAction(link);
+        return action == default ? null : ResolveActionTarget(action);
+    }
+
+    private PdfLinkTarget? ResolveActionTarget(FpdfActionT action)
+    {
+        const int pdfActionGoTo = 1;
+        const int pdfActionRemoteGoTo = 2;
+        const int pdfActionUri = 3;
+
+        var actionType = fpdf_doc.FPDFActionGetType(action);
+        if (actionType is pdfActionGoTo or pdfActionRemoteGoTo)
+        {
+            return ResolveDestinationTarget(fpdf_doc.FPDFActionGetDest(Handle, action));
+        }
+
+        if (actionType == pdfActionUri)
+        {
+            var uri = ReadActionUri(action);
+            return string.IsNullOrWhiteSpace(uri) ? null : PdfLinkTarget.ForUri(uri);
+        }
+
+        return null;
+    }
+
+    private PdfLinkTarget? ResolveDestinationTarget(FpdfDestT dest)
+    {
+        if (dest == default)
+        {
+            return null;
+        }
+
+        var pageIndex = fpdf_doc.FPDFDestGetDestPageIndex(Handle, dest);
+        return pageIndex >= 0 ? PdfLinkTarget.ForPage(pageIndex + 1) : null;
+    }
+
+    private string? ReadActionUri(FpdfActionT action)
+    {
+        var byteCount = fpdf_doc.FPDFActionGetURIPath(Handle, action, IntPtr.Zero, 0);
+        if (byteCount <= 1)
+        {
+            return null;
+        }
+
+        var buffer = Marshal.AllocHGlobal((int)byteCount);
+        try
+        {
+            var written = fpdf_doc.FPDFActionGetURIPath(Handle, action, buffer, byteCount);
+            if (written <= 1)
+            {
+                return null;
+            }
+
+            var bytes = new byte[written - 1];
+            Marshal.Copy(buffer, bytes, 0, bytes.Length);
+            return Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     private static ImageSource CreateBitmapSource(FpdfBitmapT bitmap, int pixelWidth, int pixelHeight)
     {
         var buffer = fpdfview.FPDFBitmapGetBuffer(bitmap);
@@ -592,4 +696,30 @@ public sealed class PdfTextSelectionResult
     public string Text { get; }
 
     public IReadOnlyList<TextSelectionRect> Rects { get; }
+}
+
+public sealed class PdfLinkTarget
+{
+    private PdfLinkTarget(PdfLinkTargetKind kind, int pageNumber, string? uri)
+    {
+        Kind = kind;
+        PageNumber = pageNumber;
+        Uri = uri;
+    }
+
+    public PdfLinkTargetKind Kind { get; }
+
+    public int PageNumber { get; }
+
+    public string? Uri { get; }
+
+    public static PdfLinkTarget ForPage(int pageNumber) => new(PdfLinkTargetKind.Page, pageNumber, null);
+
+    public static PdfLinkTarget ForUri(string uri) => new(PdfLinkTargetKind.Uri, 0, uri);
+}
+
+public enum PdfLinkTargetKind
+{
+    Page,
+    Uri
 }
